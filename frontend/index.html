@@ -1,0 +1,1484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PlayStation Controller Monitoring Dashboard</title>
+<style>
+:root {
+  --bg: #0d1117; --bg-elev: #161b22; --bg-elev-2: #1f2630; --border: #2a3441;
+  --text: #e6edf3; --text-dim: #8b98a8; --accent: #3b82f6; --accent-2: #2563eb;
+  --green: #22c55e; --red: #ef4444; --amber: #f59e0b; --gray: #6b7280;
+  --radius: 10px; --font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.4; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+.app-shell { display: flex; height: 100vh; }
+
+.sidebar { width: 240px; flex-shrink: 0; background: var(--bg-elev); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px; border-bottom: 1px solid var(--border); }
+.brand-mark { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); display: grid; place-items: center; font-weight: 700; font-size: 15px; color: #fff; }
+.brand-title { font-weight: 600; font-size: 14px; }
+.brand-sub { color: var(--text-dim); font-size: 11px; }
+.nav { padding: 12px 8px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+.nav-link { text-align: left; background: transparent; border: 0; padding: 10px 12px; border-radius: 8px; color: var(--text-dim); cursor: pointer; transition: background .15s, color .15s; }
+.nav-link:hover { background: var(--bg-elev-2); color: var(--text); }
+.nav-link.active { background: var(--bg-elev-2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.sidebar-footer { padding: 14px 16px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; }
+.status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--gray); box-shadow: 0 0 0 3px rgba(255,255,255,0.03); }
+.status-dot.green { background: var(--green); box-shadow: 0 0 8px rgba(34,197,94,0.6); }
+.status-dot.red { background: var(--red); box-shadow: 0 0 8px rgba(239,68,68,0.6); }
+.status-dot.amber { background: var(--amber); box-shadow: 0 0 8px rgba(245,158,11,0.6); }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--bg-elev); gap: 12px; flex-wrap: wrap; }
+.topbar h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.topbar-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.topbar-chip { padding: 6px 10px; border-radius: 999px; background: var(--bg-elev-2); border: 1px solid var(--border); font-size: 12px; color: var(--text-dim); }
+.topbar-chip.ok { color: var(--green); border-color: rgba(34,197,94,0.4); }
+.topbar-chip.warn { color: var(--amber); border-color: rgba(245,158,11,0.4); }
+.topbar-chip.bad { color: var(--red); border-color: rgba(239,68,68,0.4); }
+.topbar-clock { font-family: var(--mono); color: var(--text-dim); font-size: 12px; }
+.content { flex: 1; overflow-y: auto; padding: 20px; }
+.view { display: none; }
+.view.active { display: block; }
+
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+.stat-label { color: var(--text-dim); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.stat-value { font-size: 22px; font-weight: 600; margin-top: 6px; }
+.stat-sub { color: var(--text-dim); font-size: 11px; margin-top: 4px; }
+
+.panel-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.panel { background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.panel h2 { margin: 0 0 12px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+
+.info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 16px; margin: 0; }
+.info-grid > div { display: flex; flex-direction: column; gap: 2px; }
+.info-grid dt { color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.info-grid dd { margin: 0; font-family: var(--mono); font-size: 12px; word-break: break-word; }
+
+.btn { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-elev-2); color: var(--text); cursor: pointer; transition: background .15s; font-size: 12px; }
+.btn:hover:not(:disabled) { background: #2a3441; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--accent-2); border-color: var(--accent-2); }
+.btn-danger { color: #fff; background: #7f1d1d; border-color: #991b1b; }
+.btn-danger:hover:not(:disabled) { background: #991b1b; }
+.btn-tiny { padding: 3px 8px; font-size: 11px; }
+
+.controls-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.controls-bar.wrap { flex-wrap: wrap; }
+.select-wrap { display: flex; align-items: center; gap: 6px; color: var(--text-dim); font-size: 12px; }
+select, input[type="search"], input[type="number"] { background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text); padding: 8px 10px; border-radius: 8px; font-size: 12px; outline: none; }
+select:focus, input:focus { border-color: var(--accent); }
+
+.chip { border: 1px solid var(--border); background: var(--bg-elev-2); color: var(--text-dim); padding: 5px 12px; border-radius: 999px; cursor: pointer; font-size: 12px; }
+.chip.active { border-color: var(--accent); color: var(--text); background: rgba(59,130,246,0.15); }
+.filter-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+
+.table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+.data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.data-table th, .data-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.data-table th { background: var(--bg-elev-2); color: var(--text-dim); font-weight: 500; position: sticky; top: 0; }
+.data-table tr:last-child td { border-bottom: 0; }
+.data-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+.data-table .state-pressed { color: var(--green); font-weight: 600; }
+.data-table .state-released { color: var(--text-dim); }
+.log-wrap { max-height: 55vh; overflow-y: auto; }
+.log-meta { color: var(--text-dim); font-size: 12px; margin-bottom: 8px; }
+
+.controller-render { position: relative; width: 100%; max-width: 640px; margin: 0 auto 12px; }
+.controller-render svg { width: 100%; height: auto; display: block; }
+.trigger-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.trigger-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+.meter { height: 10px; background: var(--bg-elev-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+.meter-fill { height: 100%; width: 0%; background: var(--green); transition: width .08s linear; }
+
+.sticks { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stick-block { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.stick-title { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+.stick-values { font-family: var(--mono); font-size: 12px; color: var(--text-dim); }
+.stick-canvas { background: var(--bg-elev-2); border: 1px solid var(--border); border-radius: 50%; }
+
+.ranking { display: flex; flex-direction: column; gap: 6px; }
+.ranking-row { display: grid; grid-template-columns: 100px 1fr 40px; gap: 8px; align-items: center; font-size: 12px; }
+.ranking-bar { height: 8px; background: var(--bg-elev-2); border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+.ranking-fill { height: 100%; background: var(--accent); }
+.ranking-count { text-align: right; color: var(--text-dim); font-family: var(--mono); }
+
+.settings-form { display: flex; flex-direction: column; gap: 12px; max-width: 520px; }
+.stack { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+.stack.row { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+.stack input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+.hint { color: var(--text-dim); font-size: 12px; }
+
+.ctrl-btn .btn-body { fill: #232b36; stroke: #394655; stroke-width: 2; transition: fill .08s linear, stroke .08s linear; }
+.ctrl-btn.pressed .btn-body { fill: var(--green); stroke: #86efac; filter: drop-shadow(0 0 4px rgba(34,197,94,.7)); }
+.ctrl-btn .btn-label { fill: var(--text-dim); font-size: 11px; font-family: var(--mono); text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+.ctrl-btn.pressed .btn-label { fill: #052e16; }
+.ctrl-shoulder .btn-body { fill: #232b36; stroke: #394655; stroke-width: 2; transition: fill .08s linear; }
+.ctrl-shoulder.pressed .btn-body { fill: var(--green); stroke: #86efac; }
+.ctrl-stick .stick-base { fill: #11161d; stroke: #394655; stroke-width: 2; }
+.ctrl-stick .stick-knob { fill: #394655; stroke: #4b5a6b; stroke-width: 2; transition: fill .08s linear; }
+.ctrl-stick.pressed .stick-knob { fill: var(--green); stroke: #86efac; }
+
+#fatal { position: fixed; inset: 0; display: none; z-index: 9999; background: var(--bg); color: var(--text); padding: 40px; font-family: var(--mono); overflow: auto; }
+#fatal.show { display: block; }
+#fatal h2 { color: var(--red); font-family: var(--font); margin-top: 0; }
+#fatal pre { background: var(--bg-elev); border: 1px solid var(--border); padding: 12px; border-radius: 8px; white-space: pre-wrap; word-break: break-word; }
+
+@media (max-width: 900px) { .panel-grid { grid-template-columns: 1fr; } .sidebar { width: 200px; } }
+@media (max-width: 700px) {
+  .app-shell { flex-direction: column; height: auto; min-height: 100vh; }
+  body { overflow: auto; }
+  .sidebar { width: 100%; flex-direction: row; align-items: center; overflow-x: auto; }
+  .brand { border-bottom: 0; border-right: 1px solid var(--border); }
+  .nav { flex-direction: row; padding: 8px; }
+  .sidebar-footer { display: none; }
+  .main { height: auto; }
+  .content { padding: 12px; }
+  .sticks { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<div id="fatal">
+  <h2>Dashboard could not start</h2>
+  <p>A JavaScript error occurred while initializing the dashboard. Details below:</p>
+  <pre id="fatalMsg"></pre>
+  <p>Open the browser DevTools Console (F12) for the full stack trace.</p>
+</div>
+
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark">PS</span>
+      <div>
+        <div class="brand-title">Controller Monitor</div>
+        <div class="brand-sub">Gamepad API · USB / BLE</div>
+      </div>
+    </div>
+    <nav class="nav" role="tablist">
+      <button class="nav-link active" data-view="overview" role="tab" aria-selected="true">Overview</button>
+      <button class="nav-link" data-view="live" role="tab" aria-selected="false">Live Controller</button>
+      <button class="nav-link" data-view="logs" role="tab" aria-selected="false">Event Logs</button>
+      <button class="nav-link" data-view="settings" role="tab" aria-selected="false">Settings</button>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="status-dot" id="sidebarControllerDot"></span>
+      <span id="sidebarControllerText">No controller</span>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-left"><h1 id="topbarTitle">Overview</h1></div>
+      <div class="topbar-right">
+        <div class="topbar-chip" id="gamepadSupportedChip">Gamepad API: checking…</div>
+        <div class="topbar-chip" id="controllerChip">Controller: none</div>
+        <div class="topbar-chip" id="transportChip">Transport: —</div>
+        <div class="topbar-clock" id="clock">--:--:--</div>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="view active" id="view-overview">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">Controller</div><div class="stat-value" id="statController">Disconnected</div><div class="stat-sub" id="statControllerSub">Press a button on your controller</div></div>
+          <div class="stat-card"><div class="stat-label">Total Presses</div><div class="stat-value" id="statPresses">0</div><div class="stat-sub">Local session</div></div>
+          <div class="stat-card"><div class="stat-label">Total Releases</div><div class="stat-value" id="statReleases">0</div><div class="stat-sub">Local session</div></div>
+          <div class="stat-card"><div class="stat-label">Total Events</div><div class="stat-value" id="statEvents">0</div><div class="stat-sub">Local session</div></div>
+          <div class="stat-card"><div class="stat-label">Session Duration</div><div class="stat-value" id="statSession">00:00:00</div><div class="stat-sub">Current monitoring session</div></div>
+        </div>
+        <div class="panel-grid">
+          <div class="panel"><h2>Activity (last 60s)</h2><canvas id="activityChart" width="600" height="180"></canvas></div>
+          <div class="panel"><h2>Per-button activity</h2><div id="buttonRanking" class="ranking"></div></div>
+        </div>
+        <div class="panel">
+          <h2>Controller Info</h2>
+          <dl class="info-grid">
+            <div><dt>Name</dt><dd id="infoName">—</dd></div>
+            <div><dt>ID (browser)</dt><dd id="infoId">—</dd></div>
+            <div><dt>Index</dt><dd id="infoIndex">—</dd></div>
+            <div><dt>Transport</dt><dd id="infoTransport">—</dd></div>
+            <div><dt>Mapping</dt><dd id="infoMapping">—</dd></div>
+            <div><dt>Buttons</dt><dd id="infoButtons">—</dd></div>
+            <div><dt>Axes</dt><dd id="infoAxes">—</dd></div>
+            <div><dt>Status</dt><dd id="infoStatus">—</dd></div>
+            <div><dt>Last Input</dt><dd id="infoLastInput">—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="view" id="view-live">
+        <div class="controls-bar">
+          <label class="select-wrap"><span>Controller</span><select id="controllerSelect"></select></label>
+          <button class="btn" id="refreshControllersBtn">Refresh Detection</button>
+          <button class="btn btn-primary" id="startBtn">Start Monitoring</button>
+          <button class="btn btn-danger" id="stopBtn" disabled>Stop Monitoring</button>
+          <button class="btn" id="clearSessionBtn">Clear Current Session</button>
+        </div>
+        <div class="panel-grid">
+          <div class="panel">
+            <h2>Controller</h2>
+            <div id="controllerRender" class="controller-render"></div>
+            <div class="trigger-wrap">
+              <div><div class="trigger-label">L2 <span id="l2Value">0%</span></div><div class="meter"><div class="meter-fill" id="l2Fill"></div></div></div>
+              <div><div class="trigger-label">R2 <span id="r2Value">0%</span></div><div class="meter"><div class="meter-fill" id="r2Fill"></div></div></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>Analog Sticks</h2>
+            <div class="sticks">
+              <div class="stick-block"><div class="stick-title">Left</div><canvas class="stick-canvas" id="leftStick" width="180" height="180"></canvas><div class="stick-values" id="leftStickValues">X 0.00 · Y 0.00</div></div>
+              <div class="stick-block"><div class="stick-title">Right</div><canvas class="stick-canvas" id="rightStick" width="180" height="180"></canvas><div class="stick-values" id="rightStickValues">X 0.00 · Y 0.00</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Live Button Status</h2>
+          <div class="filter-row">
+            <button class="chip active" data-filter="all">All</button>
+            <button class="chip" data-filter="pressed">Pressed</button>
+            <button class="chip" data-filter="recent">Recently Changed</button>
+            <button class="chip" data-filter="analog">Analog</button>
+            <button class="chip" data-filter="dpad">D-Pad</button>
+            <button class="chip" data-filter="face">Face</button>
+            <button class="chip" data-filter="shoulder">Shoulders/Triggers</button>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table" id="buttonTable">
+              <thead><tr><th>Button</th><th>Idx</th><th>State</th><th>Value</th><th>Last Change</th><th>Presses</th><th>Releases</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" id="view-logs">
+        <div class="controls-bar wrap">
+          <input type="search" id="logSearch" placeholder="Search button/axis name…" />
+          <select id="logTypeFilter">
+            <option value="">All types</option>
+            <option value="buttondown">button down</option>
+            <option value="buttonup">button up</option>
+            <option value="axischange">axis change</option>
+            <option value="connected">connected</option>
+            <option value="disconnected">disconnected</option>
+          </select>
+          <select id="logControllerFilter"><option value="">All controllers</option></select>
+          <select id="logTimeFilter">
+            <option value="">All time</option>
+            <option value="60000">Last 1 min</option>
+            <option value="300000">Last 5 min</option>
+            <option value="3600000">Last 1 hour</option>
+          </select>
+          <button class="btn" id="logSortBtn">Newest first</button>
+          <button class="btn" id="logPauseBtn">Pause</button>
+          <button class="btn btn-danger" id="logClearBtn">Clear Logs</button>
+          <button class="btn" id="exportCsvBtn">Export CSV</button>
+          <button class="btn" id="exportJsonBtn">Export JSON</button>
+        </div>
+        <div class="log-meta" id="logMeta">0 events</div>
+        <div class="table-wrap log-wrap">
+          <table class="data-table" id="logTable">
+            <thead><tr><th>Time</th><th>Type</th><th>Button/Axis</th><th>Idx</th><th>Prev</th><th>New</th><th>State</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="view-settings">
+        <div class="panel">
+          <h2>Settings</h2>
+          <form id="settingsForm" class="settings-form">
+            <label class="stack"><span>Analog stick dead zone (0–0.5)</span><input type="number" name="deadZone" min="0" max="0.5" step="0.01" /></label>
+            <label class="stack"><span>Analog event threshold (0–1)</span><input type="number" name="axisThreshold" min="0" max="1" step="0.01" /></label>
+            <label class="stack"><span>Analog event sampling interval (ms)</span><input type="number" name="axisInterval" min="16" max="2000" step="1" /></label>
+            <label class="stack"><span>Button press threshold (0–1)</span><input type="number" name="pressThreshold" min="0" max="1" step="0.01" /></label>
+            <label class="stack"><span>Button release threshold (0–1)</span><input type="number" name="releaseThreshold" min="0" max="1" step="0.01" /></label>
+            <label class="stack"><span>Button transition debounce (ms)</span><input type="number" name="debounceMs" min="0" max="250" step="1" /></label>
+            <label class="stack"><span>Maximum displayed logs</span><input type="number" name="maxLogs" min="50" max="5000" step="50" /></label>
+            <label class="stack row"><input type="checkbox" name="utcTimestamps" /><span>Use UTC timestamps in log</span></label>
+            <div class="controls-bar">
+              <button type="submit" class="btn btn-primary">Save Settings</button>
+              <button type="button" class="btn" id="settingsResetBtn">Reset to Defaults</button>
+            </div>
+            <div class="hint" id="settingsFeedback"></div>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+   * 1. SETTINGS — localStorage-backed preferences
+   * ========================================================= */
+  const Settings = (() => {
+    const DEFAULTS = {
+      deadZone: 0.15, axisThreshold: 0.2, axisInterval: 100,
+      pressThreshold: 0.5, releaseThreshold: 0.35, debounceMs: 30,
+      maxLogs: 500, utcTimestamps: false,
+    };
+    const KEY = 'ps-controller-dashboard.settings.v3';
+    const listeners = new Set();
+    let current;
+
+    const clamp = (n, a, b, fb) => (!isFinite(n) ? fb : Math.min(b, Math.max(a, n)));
+
+    function validate(s) {
+      const o = { ...DEFAULTS, ...s };
+      o.deadZone = clamp(Number(o.deadZone), 0, 0.5, DEFAULTS.deadZone);
+      o.axisThreshold = clamp(Number(o.axisThreshold), 0, 1, DEFAULTS.axisThreshold);
+      o.axisInterval = clamp(Number(o.axisInterval), 16, 2000, DEFAULTS.axisInterval);
+      o.pressThreshold = clamp(Number(o.pressThreshold), 0, 1, DEFAULTS.pressThreshold);
+      o.releaseThreshold = clamp(Number(o.releaseThreshold), 0, 1, DEFAULTS.releaseThreshold);
+      o.debounceMs = clamp(Number(o.debounceMs), 0, 250, DEFAULTS.debounceMs);
+      o.maxLogs = Math.round(clamp(Number(o.maxLogs), 50, 5000, DEFAULTS.maxLogs));
+      o.utcTimestamps = !!o.utcTimestamps;
+      return o;
+    }
+
+    function load() {
+      try {
+        const raw = localStorage.getItem(KEY);
+        return validate(raw ? JSON.parse(raw) : {});
+      } catch (e) { return validate({}); }
+    }
+
+    function notify() {
+      const snap = { ...current };
+      listeners.forEach(fn => { try { fn(snap); } catch (e) { console.error(e); } });
+    }
+
+    current = load();
+
+    return {
+      get: () => ({ ...current }),
+      set(patch) {
+        current = validate({ ...current, ...patch });
+        try { localStorage.setItem(KEY, JSON.stringify(current)); } catch (e) { /* ignore */ }
+        notify();
+        return { ...current };
+      },
+      reset() {
+        current = validate({});
+        try { localStorage.removeItem(KEY); } catch (e) { /* ignore */ }
+        notify();
+        return { ...current };
+      },
+      subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+      DEFAULTS,
+    };
+  })();
+
+  /* =========================================================
+   * 2. EVENT LOGGER — in-memory, no server
+   * ========================================================= */
+  const EventLogger = (() => {
+    const MAX_EVENTS = 5000;
+    let settings = Settings.get();
+    const events = [];
+    let paused = false, sortDesc = true, searchTerm = '', typeFilter = '', controllerFilter = '', timeFilterMs = 0;
+    const listeners = new Set();
+
+    const notify = () => {
+      const snap = snapshot();
+      listeners.forEach(fn => { try { fn(snap); } catch (e) { console.error(e); } });
+    };
+
+    function snapshot() {
+      return {
+        total: events.length, paused, sortDesc,
+        presses: events.filter(e => e.eventType === 'buttondown').length,
+        releases: events.filter(e => e.eventType === 'buttonup').length,
+      };
+    }
+
+    function add(evt) {
+      if (events.length >= MAX_EVENTS) events.shift();
+      events.push(evt);
+      notify();
+    }
+
+    function filtered() {
+      const now = Date.now();
+      return events.filter(e => {
+        if (typeFilter && e.eventType !== typeFilter) return false;
+        if (controllerFilter !== '' && String(e.controllerIndex) !== String(controllerFilter)) return false;
+        if (timeFilterMs > 0 && now - new Date(e.clientTimestamp).getTime() > timeFilterMs) return false;
+        if (searchTerm) {
+          const q = searchTerm.toLowerCase();
+          const hay = `${e.controlName || ''} ${e.eventType || ''}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+    }
+
+    function toCSV(list) {
+      const headers = ['eventId', 'sessionId', 'controllerId', 'controllerIndex', 'transport', 'eventType', 'controlName', 'controlIndex', 'prevValue', 'newValue', 'state', 'clientTimestamp'];
+      const rows = [headers.join(',')];
+      for (const e of list) {
+        rows.push(headers.map(k => '"' + String(e[k] == null ? '' : e[k]).replace(/"/g, '""') + '"').join(','));
+      }
+      return rows.join('\n');
+    }
+
+    const toJSON = list => JSON.stringify(list, null, 2);
+
+    function formatTime(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return settings.utcTimestamps
+        ? d.toISOString().replace('T', ' ').replace('Z', ' UTC')
+        : d.toLocaleTimeString();
+    }
+
+    return {
+      add, snapshot, filtered, toCSV, toJSON, formatTime, events,
+      setPaused(v) { paused = !!v; notify(); },
+      setSort(d) { sortDesc = !!d; notify(); },
+      setSearch(s) { searchTerm = String(s || ''); notify(); },
+      setTypeFilter(t) { typeFilter = String(t || ''); notify(); },
+      setControllerFilter(c) { controllerFilter = String(c || ''); notify(); },
+      setTimeFilter(ms) { timeFilterMs = Number(ms) || 0; notify(); },
+      clear() { events.length = 0; notify(); },
+      subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+      applySettings(s) { settings = { ...settings, ...s }; notify(); },
+    };
+  })();
+
+  /* =========================================================
+   * 3. DASHBOARD STATS — session counters, chart, ranking
+   * ========================================================= */
+  const DashboardStats = (() => {
+    let startTime = Date.now();
+    let presses = 0, releases = 0;
+    const perButton = new Map();
+    const buckets = new Array(60).fill(0);
+    let bucketSec = Math.floor(Date.now() / 1000);
+
+    function roll() {
+      const nowSec = Math.floor(Date.now() / 1000);
+      while (bucketSec < nowSec) { bucketSec++; buckets.shift(); buckets.push(0); }
+    }
+
+    function record(type, name) {
+      roll();
+      buckets[buckets.length - 1]++;
+      if (type === 'buttondown') presses++;
+      else if (type === 'buttonup') releases++;
+      if (name) {
+        const e = perButton.get(name) || { presses: 0, releases: 0 };
+        if (type === 'buttondown') e.presses++;
+        else if (type === 'buttonup') e.releases++;
+        perButton.set(name, e);
+      }
+    }
+
+    function sessionDuration() {
+      const s = Math.floor((Date.now() - startTime) / 1000);
+      return [
+        String(Math.floor(s / 3600)).padStart(2, '0'),
+        String(Math.floor((s % 3600) / 60)).padStart(2, '0'),
+        String(s % 60).padStart(2, '0'),
+      ].join(':');
+    }
+
+    function ranking() {
+      return [...perButton.entries()]
+        .map(([name, v]) => ({ name, total: v.presses + v.releases }))
+        .sort((a, b) => b.total - a.total)
+        .slice(0, 8);
+    }
+
+    return {
+      record, sessionDuration, ranking, buckets,
+      getPresses: () => presses,
+      getReleases: () => releases,
+      reset() {
+        startTime = Date.now(); presses = 0; releases = 0;
+        perButton.clear();
+        for (let i = 0; i < buckets.length; i++) buckets[i] = 0;
+        bucketSec = Math.floor(Date.now() / 1000);
+      },
+    };
+  })();
+
+  /* =========================================================
+   * 4. CONTROLLER RENDERER — SVG visualization
+   * ========================================================= */
+  const ControllerRenderer = (() => {
+    const NAMES = [
+      'Cross', 'Circle', 'Square', 'Triangle',
+      'L1', 'R1', 'L2', 'R2',
+      'Create', 'Options', 'L3', 'R3',
+      'D-Pad Up', 'D-Pad Down', 'D-Pad Left', 'D-Pad Right',
+      'PS/Home', 'Touchpad',
+    ];
+
+    function svg() {
+      return `
+<svg viewBox="0 0 640 380" xmlns="http://www.w3.org/2000/svg">
+  <path d="M180 60 Q320 30 460 60 Q540 75 555 130 L585 220 Q600 290 540 320 Q480 345 430 300 L400 260 Q360 235 320 235 Q280 235 240 260 L210 300 Q160 345 100 320 Q40 290 55 220 L85 130 Q100 75 180 60 Z" fill="#1a1f27" stroke="#394655" stroke-width="3"/>
+  <g class="ctrl-shoulder" data-idx="4"><rect class="btn-body" x="105" y="38" width="130" height="34" rx="12"/><text class="btn-label" x="170" y="55">L1</text></g>
+  <g class="ctrl-shoulder" data-idx="5"><rect class="btn-body" x="405" y="38" width="130" height="34" rx="12"/><text class="btn-label" x="470" y="55">R1</text></g>
+  <g class="ctrl-shoulder" data-idx="6"><rect class="btn-body" x="105" y="6" width="130" height="26" rx="10"/><text class="btn-label" x="170" y="20">L2</text></g>
+  <g class="ctrl-shoulder" data-idx="7"><rect class="btn-body" x="405" y="6" width="130" height="26" rx="10"/><text class="btn-label" x="470" y="20">R2</text></g>
+  <g class="ctrl-btn" data-idx="12"><rect class="btn-body" x="235" y="130" width="34" height="34" rx="6"/><text class="btn-label" x="252" y="147">▲</text></g>
+  <g class="ctrl-btn" data-idx="13"><rect class="btn-body" x="235" y="200" width="34" height="34" rx="6"/><text class="btn-label" x="252" y="217">▼</text></g>
+  <g class="ctrl-btn" data-idx="14"><rect class="btn-body" x="200" y="165" width="34" height="34" rx="6"/><text class="btn-label" x="217" y="182">◀</text></g>
+  <g class="ctrl-btn" data-idx="15"><rect class="btn-body" x="270" y="165" width="34" height="34" rx="6"/><text class="btn-label" x="287" y="182">▶</text></g>
+  <g class="ctrl-btn" data-idx="3"><circle class="btn-body" cx="405" cy="130" r="22"/><text class="btn-label" x="405" y="130">△</text></g>
+  <g class="ctrl-btn" data-idx="1"><circle class="btn-body" cx="450" cy="175" r="22"/><text class="btn-label" x="450" y="175">○</text></g>
+  <g class="ctrl-btn" data-idx="0"><circle class="btn-body" cx="405" cy="220" r="22"/><text class="btn-label" x="405" y="220">✕</text></g>
+  <g class="ctrl-btn" data-idx="2"><circle class="btn-body" cx="360" cy="175" r="22"/><text class="btn-label" x="360" y="175">□</text></g>
+  <g class="ctrl-btn" data-idx="8"><rect class="btn-body" x="285" y="90" width="30" height="20" rx="5"/><text class="btn-label" x="300" y="102">SH</text></g>
+  <g class="ctrl-btn" data-idx="9"><rect class="btn-body" x="325" y="90" width="30" height="20" rx="5"/><text class="btn-label" x="340" y="102">OP</text></g>
+  <g class="ctrl-btn" data-idx="16"><rect class="btn-body" x="300" y="145" width="40" height="20" rx="5"/><text class="btn-label" x="320" y="157">PS</text></g>
+  <g class="ctrl-btn" data-idx="17"><rect class="btn-body" x="295" y="175" width="50" height="24" rx="6"/><text class="btn-label" x="320" y="190">TP</text></g>
+  <g class="ctrl-stick" data-idx="10"><circle class="stick-base" cx="200" cy="275" r="40"/><circle class="stick-knob" cx="200" cy="275" r="26"/><text class="btn-label" x="200" y="332" style="fill:#8b98a8">L3</text></g>
+  <g class="ctrl-stick" data-idx="11"><circle class="stick-base" cx="440" cy="275" r="40"/><circle class="stick-knob" cx="440" cy="275" r="26"/><text class="btn-label" x="440" y="332" style="fill:#8b98a8">R3</text></g>
+</svg>`;
+    }
+
+    let map = new Map();
+
+    function mount(el) {
+      el.innerHTML = svg();
+      map.clear();
+      el.querySelectorAll('[data-idx]').forEach(n => map.set(Number(n.getAttribute('data-idx')), n));
+    }
+    function setPressed(i, on) {
+      const e = map.get(i);
+      if (e) e.classList.toggle('pressed', !!on);
+    }
+    function resetAll() { map.forEach(e => e.classList.remove('pressed')); }
+    const getName = i => (i >= 0 && i < NAMES.length) ? NAMES[i] : null;
+
+    return { mount, setPressed, resetAll, getName, NAMES };
+  })();
+
+  /* =========================================================
+   * 5. GAMEPAD MANAGER — USB + BLE, transition debounced
+   * ========================================================= */
+  const GamepadManager = (() => {
+    /* ---- Hoisted helpers (declared before anything that calls them) ---- */
+    const newSession = () =>
+      'sess-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+
+    function detectTransport(id) {
+      if (!id) return 'unknown';
+      const s = id.toLowerCase();
+      if (s.includes('bluetooth') || s.includes('wireless') || s.includes('bt ')) return 'bluetooth';
+      if (s.includes('usb') || s.includes('wired')) return 'usb';
+      if (/vendor:\s*054c/.test(s)) return 'usb';
+      return 'unknown';
+    }
+
+    const getPads = () =>
+      navigator.getGamepads ? Array.from(navigator.getGamepads() || []).filter(Boolean) : [];
+
+    /* ---- State (safe to initialize now) ---- */
+    let settings = Settings.get();
+    const applySettings = s => { settings = { ...settings, ...s }; };
+
+    const subs = new Set();
+    const subscribe = fn => { subs.add(fn); return () => subs.delete(fn); };
+    const emit = (type, data) => subs.forEach(fn => { try { fn(type, data); } catch (e) { console.error(e); } });
+
+    let sessionId = newSession();
+    let selectedIndex = null;
+    let monitoring = false;
+    let rafId = null;
+    let lastInputAt = null;
+    let pollCount = 0;
+    let lastAxisSample = 0;
+    let rediscoverTimer = null;
+
+    const prevButtons = new Map();
+    const prevAxes = { 0: null, 1: null, 2: null, 3: null };
+    const pressCounts = new Map();
+    const releaseCounts = new Map();
+    const lastChange = new Map();
+    const pending = new Map();
+    const controllers = new Map();
+
+    /* ---- Controller registry ---- */
+    function refreshControllers() {
+      const pads = getPads();
+      const known = new Set();
+      pads.forEach(p => {
+        known.add(p.index);
+        const prev = controllers.get(p.index);
+        controllers.set(p.index, {
+          index: p.index,
+          id: p.id,
+          mapping: p.mapping || 'non-standard',
+          buttons: p.buttons.length,
+          axes: p.axes.length,
+          transport: detectTransport(p.id),
+          firstSeenAt: prev ? prev.firstSeenAt : new Date().toISOString(),
+        });
+      });
+      [...controllers.keys()].forEach(i => { if (!known.has(i)) controllers.delete(i); });
+
+      if (pads.length === 1) selectedIndex = pads[0].index;
+      else if (selectedIndex == null && pads.length > 0) selectedIndex = pads[0].index;
+      else if (selectedIndex != null && !pads.some(p => p.index === selectedIndex)) {
+        selectedIndex = pads.length ? pads[0].index : null;
+      }
+
+      emit('controllers-changed', { controllers: [...controllers.values()], selectedIndex });
+      return [...controllers.values()];
+    }
+
+    const getSelectedPad = () => selectedIndex == null
+      ? null
+      : getPads().find(p => p.index === selectedIndex) || null;
+
+    function selectController(i) {
+      selectedIndex = i;
+      prevButtons.clear();
+      prevAxes[0] = prevAxes[1] = prevAxes[2] = prevAxes[3] = null;
+      pending.forEach(t => clearTimeout(t.timer));
+      pending.clear();
+      ControllerRenderer.resetAll();
+      emit('selection-changed', { selectedIndex });
+    }
+
+    /* ---- Lifecycle ---- */
+    function start() {
+      if (monitoring) return;
+      monitoring = true;
+      if (rediscoverTimer) clearInterval(rediscoverTimer);
+      rediscoverTimer = setInterval(() => {
+        if (monitoring && controllers.size === 0) refreshControllers();
+      }, 2000);
+      emit('started', {});
+      loop();
+    }
+
+    function stop() {
+      monitoring = false;
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = null;
+      if (rediscoverTimer) { clearInterval(rediscoverTimer); rediscoverTimer = null; }
+      pending.forEach(t => clearTimeout(t.timer));
+      pending.clear();
+      emit('stopped', {});
+    }
+
+    function loop() {
+      if (!monitoring) return;
+      pollCount++;
+      processPad();
+      rafId = requestAnimationFrame(loop);
+    }
+
+    /* ---- Debounce + resolve ---- */
+    function queueTransition(pad, idx, next, value) {
+      const ex = pending.get(idx);
+      const deb = settings.debounceMs;
+
+      if (deb <= 0) {
+        const was = prevButtons.get(idx) || false;
+        if (next !== was) commit(pad, idx, was, next, value);
+        return;
+      }
+      if (ex && ex.pressed === next) return;
+      if (ex) clearTimeout(ex.timer);
+
+      const timer = setTimeout(() => {
+        pending.delete(idx);
+        const was = prevButtons.get(idx) || false;
+        if (next !== was) commit(pad, idx, was, next, value);
+      }, deb);
+
+      pending.set(idx, { pressed: next, timer });
+    }
+
+    function resolvePressed(btn, was) {
+      if (!btn) return false;
+      const v = typeof btn.value === 'number' ? btn.value : (btn.pressed ? 1 : 0);
+      const thr = was ? settings.releaseThreshold : settings.pressThreshold;
+      if (btn.pressed && v > 0.01) return true;
+      return v >= thr;
+    }
+
+    function processPad() {
+      const pad = getSelectedPad();
+      if (!pad) {
+        if (prevButtons.size > 0) {
+          prevButtons.forEach((was, i) => { if (was) commit(pad, i, true, false, 0); });
+          prevButtons.clear();
+        }
+        emit('pad-missing', {});
+        return;
+      }
+
+      pad.buttons.forEach((btn, i) => {
+        const was = prevButtons.get(i) || false;
+        const next = resolvePressed(btn, was);
+        if (next !== was) {
+          queueTransition(pad, i, next, typeof btn.value === 'number' ? btn.value : (next ? 1 : 0));
+        }
+      });
+      [...prevButtons.keys()].forEach(i => { if (i >= pad.buttons.length) prevButtons.delete(i); });
+
+      const nowMs = Date.now();
+      if (nowMs - lastAxisSample >= settings.axisInterval) {
+        lastAxisSample = nowMs;
+        for (let i = 0; i < Math.min(pad.axes.length, 4); i++) {
+          const raw = pad.axes[i];
+          const prev = prevAxes[i];
+          const meaningful = Math.abs(raw - (prev == null ? 0 : prev)) >= settings.axisThreshold;
+          const outside = Math.abs(raw) >= settings.deadZone;
+          if (prev == null || (meaningful && outside)) {
+            prevAxes[i] = raw;
+            emit('axis-sample', { idx: i, raw, pad });
+            if (prev != null && meaningful) logAxis(pad, i, prev, raw);
+          }
+        }
+      }
+
+      emit('pad-polled', { pad, pollCount });
+    }
+
+    /* ---- Event building ---- */
+    function controlName(pad, i) {
+      if (pad.mapping === 'standard') {
+        const n = ControllerRenderer.getName(i);
+        if (n) return n;
+      }
+      return `Button ${i}`;
+    }
+
+    const isAnalog = (pad, i) =>
+      (pad.mapping === 'standard' && (i === 6 || i === 7)) ||
+      (pad.buttons[i] && pad.buttons[i].value > 0 && pad.buttons[i].value < 1);
+
+    function commit(pad, i, was, now, value) {
+      prevButtons.set(i, now);
+      if (!pad) return;
+
+      const t = (controllers.get(pad.index) || {}).transport || 'unknown';
+      const iso = new Date().toISOString();
+
+      if (now) pressCounts.set(i, (pressCounts.get(i) || 0) + 1);
+      else releaseCounts.set(i, (releaseCounts.get(i) || 0) + 1);
+      lastChange.set(i, iso);
+      lastInputAt = iso;
+      ControllerRenderer.setPressed(i, now);
+
+      const evt = {
+        eventId: 'evt-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+        sessionId,
+        controllerId: pad.id,
+        controllerIndex: pad.index,
+        transport: t,
+        eventType: now ? 'buttondown' : 'buttonup',
+        controlName: controlName(pad, i),
+        controlIndex: i,
+        prevValue: was ? 1 : 0,
+        newValue: now ? 1 : 0,
+        state: now ? 'PRESSED' : 'RELEASED',
+        analog: isAnalog(pad, i),
+        value,
+        clientTimestamp: iso,
+      };
+
+      EventLogger.add(evt);
+      DashboardStats.record(evt.eventType, evt.controlName);
+      emit('button-transition', { evt, pad, idx: i, pressed: now, value });
+    }
+
+    function logAxis(pad, i, prev, raw) {
+      const names = ['Left X', 'Left Y', 'Right X', 'Right Y'];
+      const iso = new Date().toISOString();
+      lastInputAt = iso;
+      const t = (controllers.get(pad.index) || {}).transport || 'unknown';
+      const r2 = n => Math.round(n * 100) / 100;
+
+      const evt = {
+        eventId: 'evt-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+        sessionId,
+        controllerId: pad.id,
+        controllerIndex: pad.index,
+        transport: t,
+        eventType: 'axischange',
+        controlName: names[i] || `Axis ${i}`,
+        controlIndex: i,
+        prevValue: r2(prev),
+        newValue: r2(raw),
+        state: '',
+        analog: true,
+        clientTimestamp: iso,
+      };
+
+      EventLogger.add(evt);
+      DashboardStats.record('axischange', evt.controlName);
+      emit('axis-change', { evt, pad, idx: i, prevRaw: prev, newRaw: raw });
+    }
+
+    /* ---- Session reset ---- */
+    function resetSession() {
+      sessionId = newSession();
+      prevButtons.clear();
+      prevAxes[0] = prevAxes[1] = prevAxes[2] = prevAxes[3] = null;
+      pressCounts.clear();
+      releaseCounts.clear();
+      lastChange.clear();
+      pending.forEach(t => clearTimeout(t.timer));
+      pending.clear();
+      lastInputAt = null;
+      pollCount = 0;
+      ControllerRenderer.resetAll();
+    }
+
+    /* ---- Native connect/disconnect ---- */
+    function connectionEvent(pad, type) {
+      const iso = new Date().toISOString();
+      const evt = {
+        eventId: 'evt-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+        sessionId,
+        controllerId: pad ? pad.id : 'unknown',
+        controllerIndex: pad ? pad.index : -1,
+        transport: pad ? detectTransport(pad.id) : 'unknown',
+        eventType: type,
+        controlName: 'Controller',
+        controlIndex: -1,
+        prevValue: '',
+        newValue: '',
+        state: type === 'connected' ? 'CONNECTED' : 'DISCONNECTED',
+        analog: false,
+        clientTimestamp: iso,
+      };
+      EventLogger.add(evt);
+      DashboardStats.record(type, null);
+      emit('connection-event', { evt });
+    }
+
+    window.addEventListener('gamepadconnected', (e) => {
+      refreshControllers();
+      connectionEvent(e.gamepad, 'connected');
+      emit('gamepad-connected', { gamepad: e.gamepad });
+    });
+
+    window.addEventListener('gamepaddisconnected', (e) => {
+      connectionEvent(e.gamepad, 'disconnected');
+      if (prevButtons.size > 0) {
+        prevButtons.forEach((was, i) => { if (was) commit(e.gamepad, i, true, false, 0); });
+        prevButtons.clear();
+      }
+      refreshControllers();
+      emit('gamepad-disconnected', { gamepad: e.gamepad });
+    });
+
+    return {
+      subscribe, start, stop, refreshControllers, selectController, getSelectedPad,
+      resetSession, applySettings, detectTransport,
+      get selectedIndex() { return selectedIndex; },
+      get monitoring() { return monitoring; },
+      get sessionId() { return sessionId; },
+      get pollCount() { return pollCount; },
+      get lastInputAt() { return lastInputAt; },
+      get connectedControllers() { return [...controllers.values()]; },
+      get buttonPressCounts() { return pressCounts; },
+      get buttonReleaseCounts() { return releaseCounts; },
+      get buttonLastChange() { return lastChange; },
+      get prevButtons() { return prevButtons; },
+    };
+  })();
+
+  /* =========================================================
+   * 6. APP — navigation, wiring, rendering
+   * ========================================================= */
+  const App = (() => {
+    const $ = sel => document.querySelector(sel);
+    const $$ = sel => Array.from(document.querySelectorAll(sel));
+    const views = ['overview', 'live', 'logs', 'settings'];
+    const titles = { overview: 'Overview', live: 'Live Controller', logs: 'Event Logs', settings: 'Settings' };
+    let activeView = 'overview';
+
+    function switchView(name) {
+      if (!views.includes(name)) return;
+      activeView = name;
+      $$('.nav-link').forEach(b => {
+        const on = b.dataset.view === name;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      views.forEach(v => {
+        const el = $('#view-' + v);
+        if (el) el.classList.toggle('active', v === name);
+      });
+      $('#topbarTitle').textContent = titles[name] || name;
+    }
+
+    function updateClock() {
+      $('#clock').textContent = new Date().toLocaleTimeString();
+    }
+
+    function updateGamepadChip() {
+      const c = $('#gamepadSupportedChip');
+      if (!navigator.getGamepads) {
+        c.textContent = 'Gamepad API: unsupported';
+        c.className = 'topbar-chip bad';
+      } else {
+        c.textContent = 'Gamepad API: available';
+        c.className = 'topbar-chip ok';
+      }
+    }
+
+    const transportLabel = t =>
+      t === 'usb' ? 'USB' : t === 'bluetooth' ? 'Bluetooth / BLE' : 'Unknown';
+
+    function updateControllerChip() {
+      const chip = $('#controllerChip');
+      const dot = $('#sidebarControllerDot');
+      const txt = $('#sidebarControllerText');
+      const pad = GamepadManager.getSelectedPad();
+
+      if (pad) {
+        const info = GamepadManager.connectedControllers.find(c => c.index === pad.index);
+        const t = info ? info.transport : 'unknown';
+        chip.textContent = `Controller: ${pad.id.split('(')[0].trim().slice(0, 40) || 'connected'}`;
+        chip.className = 'topbar-chip ok';
+        dot.className = 'status-dot green';
+        txt.textContent = pad.mapping === 'standard'
+          ? `Connected (${transportLabel(t)}, standard)`
+          : `Connected (${transportLabel(t)}, non-standard)`;
+      } else {
+        chip.textContent = 'Controller: none';
+        chip.className = 'topbar-chip warn';
+        dot.className = 'status-dot amber';
+        txt.textContent = 'No controller — press a button to wake the pad';
+      }
+    }
+
+    function updateTransportChip() {
+      const chip = $('#transportChip');
+      const pad = GamepadManager.getSelectedPad();
+      if (!pad) { chip.textContent = 'Transport: —'; chip.className = 'topbar-chip'; return; }
+      const info = GamepadManager.connectedControllers.find(c => c.index === pad.index);
+      const t = info ? info.transport : 'unknown';
+      chip.textContent = `Transport: ${transportLabel(t)}`;
+      chip.className = 'topbar-chip ' + (t === 'bluetooth' ? 'warn' : t === 'usb' ? 'ok' : '');
+    }
+
+    function renderControllerSelect(list) {
+      const sel = $('#controllerSelect');
+      sel.innerHTML = '';
+      if (!list.length) {
+        const o = document.createElement('option');
+        o.textContent = 'No controller detected';
+        o.disabled = true;
+        o.selected = true;
+        sel.appendChild(o);
+        return;
+      }
+      list.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.index;
+        o.textContent = `[${c.index}] ${transportLabel(c.transport)} · ${c.id.slice(0, 40)}`;
+        if (c.index === GamepadManager.selectedIndex) o.selected = true;
+        sel.appendChild(o);
+      });
+    }
+
+    function renderControllerInfo() {
+      const pad = GamepadManager.getSelectedPad();
+      if (!pad) {
+        ['infoName','infoId','infoIndex','infoTransport','infoMapping','infoButtons','infoAxes','infoLastInput']
+          .forEach(id => $('#' + id).textContent = '—');
+        $('#infoStatus').textContent = 'Disconnected';
+        return;
+      }
+      const info = GamepadManager.connectedControllers.find(c => c.index === pad.index);
+      $('#infoName').textContent = pad.id;
+      $('#infoId').textContent = pad.id;
+      $('#infoIndex').textContent = String(pad.index);
+      $('#infoTransport').textContent = transportLabel(info ? info.transport : 'unknown');
+      $('#infoMapping').textContent = pad.mapping || 'non-standard';
+      $('#infoButtons').textContent = String(pad.buttons.length);
+      $('#infoAxes').textContent = String(pad.axes.length);
+      $('#infoStatus').textContent = GamepadManager.monitoring ? 'Monitoring' : 'Connected (stopped)';
+      $('#infoLastInput').textContent = GamepadManager.lastInputAt || '—';
+    }
+
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+
+    function renderButtonTable() {
+      const tbody = $('#buttonTable tbody');
+      tbody.innerHTML = '';
+      const pad = GamepadManager.getSelectedPad();
+      if (!pad) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="7" style="color:var(--text-dim)">No controller selected.</td>';
+        tbody.appendChild(tr);
+        return;
+      }
+
+      const activeChip = $('.chip.active[data-filter]');
+      const filter = activeChip ? activeChip.dataset.filter : 'all';
+      const now = Date.now();
+      const prev = GamepadManager.prevButtons;
+      const pc = GamepadManager.buttonPressCounts;
+      const rc = GamepadManager.buttonReleaseCounts;
+      const lc = GamepadManager.buttonLastChange;
+
+      pad.buttons.forEach((btn, i) => {
+        const pressed = !!prev.get(i);
+        const analog = pad.mapping === 'standard' && (i === 6 || i === 7);
+        const name = pad.mapping === 'standard'
+          ? (ControllerRenderer.getName(i) || `Button ${i}`)
+          : `Button ${i}`;
+        const cat = i >= 12 && i <= 15 ? 'dpad'
+          : i >= 0 && i <= 3 ? 'face'
+          : i >= 4 && i <= 7 ? 'shoulder'
+          : analog ? 'analog' : 'other';
+        const changed = lc.get(i);
+        const recent = changed && now - new Date(changed).getTime() < 3000;
+
+        if (filter === 'pressed' && !pressed) return;
+        if (filter === 'recent' && !recent) return;
+        if (filter === 'dpad' && cat !== 'dpad') return;
+        if (filter === 'face' && cat !== 'face') return;
+        if (filter === 'shoulder' && cat !== 'shoulder') return;
+        if (filter === 'analog' && cat !== 'analog') return;
+
+        const tr = document.createElement('tr');
+        const val = typeof btn.value === 'number' ? btn.value.toFixed(2) : (btn.pressed ? '1.00' : '0.00');
+        tr.innerHTML = `
+          <td>${esc(name)}</td>
+          <td>${i}</td>
+          <td class="${pressed ? 'state-pressed' : 'state-released'}">${pressed ? 'PRESSED' : 'RELEASED'}</td>
+          <td>${val}</td>
+          <td>${changed ? esc(new Date(changed).toLocaleTimeString()) : '—'}</td>
+          <td>${pc.get(i) || 0}</td>
+          <td>${rc.get(i) || 0}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderLogTable() {
+      const list = EventLogger.filtered();
+      const sorted = list.slice().sort((a, b) => {
+        const ta = new Date(a.clientTimestamp).getTime();
+        const tb = new Date(b.clientTimestamp).getTime();
+        return EventLogger.snapshot().sortDesc ? tb - ta : ta - tb;
+      });
+      const max = Settings.get().maxLogs;
+      const tbody = $('#logTable tbody');
+      tbody.innerHTML = '';
+
+      sorted.slice(0, max).forEach(e => {
+        const tr = document.createElement('tr');
+        const sc = e.state === 'PRESSED' ? 'state-pressed' : 'state-released';
+        tr.innerHTML = `
+          <td>${esc(EventLogger.formatTime(e.clientTimestamp))}</td>
+          <td>${esc(e.eventType)}</td>
+          <td>${esc(e.controlName || '')}</td>
+          <td>${e.controlIndex != null ? e.controlIndex : ''}</td>
+          <td>${esc(String(e.prevValue ?? ''))}</td>
+          <td>${esc(String(e.newValue ?? ''))}</td>
+          <td class="${sc}">${esc(e.state || '')}</td>
+          <td><button class="btn btn-tiny copy-json">Copy</button></td>
+        `;
+        tr.querySelector('.copy-json').addEventListener('click', () => {
+          navigator.clipboard.writeText(JSON.stringify(e, null, 2)).catch(() => {});
+        });
+        tbody.appendChild(tr);
+      });
+
+      const s = EventLogger.snapshot();
+      $('#logMeta').textContent = `${list.length} events (showing up to ${max}) · presses: ${s.presses} · releases: ${s.releases}`;
+    }
+
+    function renderStats() {
+      const pad = GamepadManager.getSelectedPad();
+      const snap = EventLogger.snapshot();
+      $('#statController').textContent = pad ? 'Connected' : 'Disconnected';
+      const info = pad ? GamepadManager.connectedControllers.find(c => c.index === pad.index) : null;
+      $('#statControllerSub').textContent = pad
+        ? `${transportLabel(info ? info.transport : 'unknown')} · ${pad.mapping === 'standard' ? 'Standard mapping' : 'Non-standard mapping'}`
+        : 'Press a button on your controller';
+      $('#statPresses').textContent = String(DashboardStats.getPresses());
+      $('#statReleases').textContent = String(DashboardStats.getReleases());
+      $('#statEvents').textContent = String(snap.total);
+      $('#statSession').textContent = DashboardStats.sessionDuration();
+    }
+
+    function renderRanking() {
+      const rows = DashboardStats.ranking();
+      const box = $('#buttonRanking');
+      box.innerHTML = '';
+      if (!rows.length) {
+        box.innerHTML = '<div class="hint">No button activity yet.</div>';
+        return;
+      }
+      const max = rows[0].total || 1;
+      rows.forEach(r => {
+        const row = document.createElement('div');
+        row.className = 'ranking-row';
+        row.innerHTML = `
+          <span>${esc(r.name)}</span>
+          <div class="ranking-bar"><div class="ranking-fill" style="width:${Math.round((r.total / max) * 100)}%"></div></div>
+          <span class="ranking-count">${r.total}</span>
+        `;
+        box.appendChild(row);
+      });
+    }
+
+    function renderActivityChart() {
+      const c = $('#activityChart');
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      const w = c.width, h = c.height;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = (h - 20) * (i / 4) + 10;
+        ctx.beginPath(); ctx.moveTo(10, y); ctx.lineTo(w - 10, y); ctx.stroke();
+      }
+
+      const b = DashboardStats.buckets;
+      const max = Math.max(1, ...b);
+      const bw = (w - 20) / b.length;
+      b.forEach((v, i) => {
+        const bh = (h - 20) * (v / max);
+        const x = 10 + i * bw;
+        const y = h - 10 - bh;
+        ctx.fillStyle = v > 0 ? 'rgba(59,130,246,0.85)' : 'rgba(59,130,246,0.15)';
+        ctx.fillRect(x, y, Math.max(1, bw - 1), bh);
+      });
+
+      ctx.fillStyle = 'rgba(139,152,168,0.8)';
+      ctx.font = '10px monospace';
+      ctx.fillText('60s ago', 10, 12);
+      ctx.fillText('now', w - 34, 12);
+    }
+
+    function drawStick(id, x, y, labelId) {
+      const c = document.getElementById(id);
+      if (!c) return;
+      const ctx = c.getContext('2d');
+      const w = c.width, h = c.height, cx = w / 2, cy = h / 2, r = w / 2 - 8;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+
+      const dz = Settings.get().deadZone;
+      ctx.strokeStyle = 'rgba(245,158,11,0.35)';
+      ctx.beginPath(); ctx.arc(cx, cy, r * dz, 0, Math.PI * 2); ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+      ctx.beginPath(); ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r); ctx.stroke();
+
+      const px = cx + (x || 0) * r;
+      const py = cy + (y || 0) * r;
+      const dist = Math.sqrt((x || 0) ** 2 + (y || 0) ** 2);
+      const active = dist >= dz;
+
+      ctx.fillStyle = active ? 'rgba(34,197,94,0.9)' : 'rgba(139,152,168,0.9)';
+      ctx.beginPath(); ctx.arc(px, py, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = active ? '#86efac' : '#4b5a6b';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      const lab = document.getElementById(labelId);
+      if (lab) {
+        lab.textContent = `X ${(x || 0).toFixed(2)} · Y ${(y || 0).toFixed(2)}` + (active ? ' · active' : ' · neutral');
+      }
+    }
+
+    function renderSticks() {
+      const pad = GamepadManager.getSelectedPad();
+      drawStick('leftStick', pad ? pad.axes[0] : 0, pad ? pad.axes[1] : 0, 'leftStickValues');
+      drawStick('rightStick', pad ? pad.axes[2] : 0, pad ? pad.axes[3] : 0, 'rightStickValues');
+    }
+
+    function renderTriggers() {
+      const pad = GamepadManager.getSelectedPad();
+      const l2 = pad && pad.buttons[6] ? (pad.buttons[6].value || 0) : 0;
+      const r2 = pad && pad.buttons[7] ? (pad.buttons[7].value || 0) : 0;
+      $('#l2Value').textContent = Math.round(l2 * 100) + '%';
+      $('#r2Value').textContent = Math.round(r2 * 100) + '%';
+      $('#l2Fill').style.width = Math.round(l2 * 100) + '%';
+      $('#r2Fill').style.width = Math.round(r2 * 100) + '%';
+    }
+
+    function renderSettingsForm() {
+      const s = Settings.get();
+      const f = $('#settingsForm');
+      f.deadZone.value = s.deadZone;
+      f.axisThreshold.value = s.axisThreshold;
+      f.axisInterval.value = s.axisInterval;
+      f.pressThreshold.value = s.pressThreshold;
+      f.releaseThreshold.value = s.releaseThreshold;
+      f.debounceMs.value = s.debounceMs;
+      f.maxLogs.value = s.maxLogs;
+      f.utcTimestamps.checked = s.utcTimestamps;
+    }
+
+    function fillLogControllerFilter() {
+      const sel = $('#logControllerFilter');
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">All controllers</option>';
+      GamepadManager.connectedControllers.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.index;
+        o.textContent = `[${c.index}] ${transportLabel(c.transport)} · ${c.id.slice(0, 30)}`;
+        sel.appendChild(o);
+      });
+      if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+    }
+
+    function tick() {
+      updateClock();
+      renderStats();
+      renderActivityChart();
+      if (activeView === 'live') {
+        renderButtonTable();
+        renderSticks();
+        renderTriggers();
+        renderControllerInfo();
+      }
+      if (activeView === 'logs' && !EventLogger.snapshot().paused) {
+        renderLogTable();
+      }
+    }
+
+    function download(content, name, mime) {
+      const blob = new Blob([content], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+    }
+
+    function wire() {
+      $$('.nav-link').forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)));
+
+      $('#controllerSelect').addEventListener('change', e => {
+        GamepadManager.selectController(Number(e.target.value));
+        renderControllerSelect(GamepadManager.connectedControllers);
+        updateControllerChip();
+        updateTransportChip();
+      });
+
+      $('#refreshControllersBtn').addEventListener('click', () => {
+        GamepadManager.refreshControllers();
+        renderControllerSelect(GamepadManager.connectedControllers);
+        updateControllerChip();
+        updateTransportChip();
+      });
+
+      $('#startBtn').addEventListener('click', () => {
+        GamepadManager.refreshControllers();
+        renderControllerSelect(GamepadManager.connectedControllers);
+        GamepadManager.start();
+        $('#startBtn').disabled = true;
+        $('#stopBtn').disabled = false;
+      });
+
+      $('#stopBtn').addEventListener('click', () => {
+        GamepadManager.stop();
+        $('#startBtn').disabled = false;
+        $('#stopBtn').disabled = true;
+        renderButtonTable();
+      });
+
+      $('#clearSessionBtn').addEventListener('click', () => {
+        if (!confirm('Clear the current session? Local logs will be removed.')) return;
+        GamepadManager.resetSession();
+        EventLogger.clear();
+        DashboardStats.reset();
+        renderLogTable();
+        renderStats();
+        renderButtonTable();
+        renderRanking();
+      });
+
+      $$('.chip[data-filter]').forEach(chip => chip.addEventListener('click', () => {
+        $$('.chip[data-filter]').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        renderButtonTable();
+      }));
+
+      $('#logSearch').addEventListener('input', e => EventLogger.setSearch(e.target.value));
+      $('#logTypeFilter').addEventListener('change', e => EventLogger.setTypeFilter(e.target.value));
+      $('#logControllerFilter').addEventListener('change', e => EventLogger.setControllerFilter(e.target.value));
+      $('#logTimeFilter').addEventListener('change', e => EventLogger.setTimeFilter(Number(e.target.value)));
+
+      $('#logSortBtn').addEventListener('click', () => {
+        EventLogger.setSort(!EventLogger.snapshot().sortDesc);
+        $('#logSortBtn').textContent = EventLogger.snapshot().sortDesc ? 'Newest first' : 'Oldest first';
+        renderLogTable();
+      });
+
+      $('#logPauseBtn').addEventListener('click', () => {
+        EventLogger.setPaused(!EventLogger.snapshot().paused);
+        $('#logPauseBtn').textContent = EventLogger.snapshot().paused ? 'Resume' : 'Pause';
+      });
+
+      $('#logClearBtn').addEventListener('click', () => {
+        if (!confirm('Clear all local logs?')) return;
+        EventLogger.clear();
+        renderLogTable();
+      });
+
+      $('#exportCsvBtn').addEventListener('click', () =>
+        download(EventLogger.toCSV(EventLogger.filtered()), 'controller-events.csv', 'text/csv'));
+
+      $('#exportJsonBtn').addEventListener('click', () =>
+        download(EventLogger.toJSON(EventLogger.filtered()), 'controller-events.json', 'application/json'));
+
+      $('#settingsForm').addEventListener('submit', e => {
+        e.preventDefault();
+        const f = e.target;
+        Settings.set({
+          deadZone: Number(f.deadZone.value),
+          axisThreshold: Number(f.axisThreshold.value),
+          axisInterval: Number(f.axisInterval.value),
+          pressThreshold: Number(f.pressThreshold.value),
+          releaseThreshold: Number(f.releaseThreshold.value),
+          debounceMs: Number(f.debounceMs.value),
+          maxLogs: Number(f.maxLogs.value),
+          utcTimestamps: f.utcTimestamps.checked,
+        });
+        $('#settingsFeedback').textContent = 'Settings saved.';
+        setTimeout(() => { $('#settingsFeedback').textContent = ''; }, 2000);
+      });
+
+      $('#settingsResetBtn').addEventListener('click', () => {
+        Settings.reset();
+        renderSettingsForm();
+        $('#settingsFeedback').textContent = 'Reset to defaults.';
+        setTimeout(() => { $('#settingsFeedback').textContent = ''; }, 2000);
+      });
+
+      Settings.subscribe(s => {
+        GamepadManager.applySettings(s);
+        EventLogger.applySettings(s);
+        renderSettingsForm();
+      });
+    }
+
+    function subscribeGamepad() {
+      GamepadManager.subscribe((type, data) => {
+        switch (type) {
+          case 'controllers-changed':
+          case 'selection-changed':
+            renderControllerSelect(data.controllers || GamepadManager.connectedControllers);
+            fillLogControllerFilter();
+            updateControllerChip();
+            updateTransportChip();
+            renderControllerInfo();
+            break;
+          case 'pad-polled':
+            updateControllerChip();
+            break;
+          case 'button-transition':
+          case 'axis-change':
+          case 'connection-event':
+            if (activeView === 'logs' && !EventLogger.snapshot().paused) renderLogTable();
+            if (activeView === 'live') { renderButtonTable(); renderTriggers(); renderSticks(); }
+            if (activeView === 'overview') renderRanking();
+            break;
+          case 'started':
+            $('#startBtn').disabled = true;
+            $('#stopBtn').disabled = false;
+            break;
+          case 'stopped':
+            $('#startBtn').disabled = false;
+            $('#stopBtn').disabled = true;
+            break;
+          default:
+            break;
+        }
+      });
+
+      EventLogger.subscribe(() => {
+        if (activeView === 'logs' && !EventLogger.snapshot().paused) renderLogTable();
+        if (activeView === 'overview') renderStats();
+      });
+    }
+
+    function init() {
+      ControllerRenderer.mount($('#controllerRender'));
+      updateGamepadChip();
+      wire();
+      subscribeGamepad();
+      fillLogControllerFilter();
+      updateControllerChip();
+      updateTransportChip();
+      renderSettingsForm();
+      renderControllerSelect(GamepadManager.connectedControllers);
+
+      GamepadManager.refreshControllers();
+      renderControllerSelect(GamepadManager.connectedControllers);
+      updateControllerChip();
+      updateTransportChip();
+
+      updateClock();
+      setInterval(tick, 1000);
+      setInterval(() => {
+        if (activeView === 'overview') { renderActivityChart(); renderStats(); }
+      }, 500);
+      setInterval(() => {
+        if (activeView === 'live' && GamepadManager.monitoring) {
+          renderSticks();
+          renderTriggers();
+          renderButtonTable();
+        }
+      }, 100);
+
+      switchView('overview');
+      console.log('[dashboard] initialised');
+    }
+
+    return { init };
+  })();
+
+  /* =========================================================
+   * BOOT — with fatal error overlay
+   * ========================================================= */
+  try {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => App.init());
+    } else {
+      App.init();
+    }
+  } catch (err) {
+    console.error('[dashboard] fatal error:', err);
+    document.getElementById('fatalMsg').textContent = (err && err.stack) || String(err);
+    document.getElementById('fatal').classList.add('show');
+  }
+})();
+</script>
+</body>
+</html>
